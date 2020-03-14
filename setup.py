@@ -18,7 +18,7 @@ setup(
     license="BSD",
     author="Mark van Holsteijn",
     author_email="mark@binx.io",
-    description="release tag components in uni- and poly git repositories",
+    description="semantic version tag support for components git repositories",
     long_description=long_description,
     long_description_content_type="text/markdown",
     package_dir={"": "src"},
