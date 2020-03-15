@@ -59,7 +59,7 @@ class ReleaseInfo(object):
                 raise ValueError(f"found unsupported references {unsupported}")
             if "RELEASE" not in refs:
                 raise ValueError(
-                    f"expected at least a @@RELEASE@@ reference in pre tag command"
+                    f"expected at least a @@RELEASE@@ reference in pre tag command: '{value}' of {self.directory}"
                 )
 
         self._pre_tag_command = value
@@ -80,7 +80,7 @@ class ReleaseInfo(object):
             for line in f:
                 line = line.rstrip()
                 if len(line) > 0 and line[0] != "#":
-                    value = line.split("=", 2)
+                    value = line.split("=", 1)
                     result[value[0].strip()] = value[1].strip()
         if not ("release" in result and "tag" in result):
             log.error(f"{self.path} does not contain release and/or tag values")

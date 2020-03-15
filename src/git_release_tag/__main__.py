@@ -110,7 +110,6 @@ def show(ctx, recursive, with_tags, directory):
     form of `<release>[<-sha-commit>[-dirty]]`. If multiple directories are specified, it will print out the
     directory name followed by the release version.
     """
-
     release_infos = ReleaseInfo.find_all(directory, recursive, ctx.obj["dry_run"])
     for release_info in release_infos:
         if not release_info.has_release_configuration:
@@ -150,7 +149,6 @@ def bump(ctx, recursive:bool, force:bool, level:int, directory):
 
     for release_info in release_infos:
         release_info.tag_next_release(level, force=force)
-
 
 
 @main.command("validate")

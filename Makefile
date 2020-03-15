@@ -1,6 +1,12 @@
+CURRENT_VERSION=$(git-release-tag show)
 
+dist/git-release-tag-$(CURRENT_VERSION).tag.gz: src/*/* setup.py
+	rm -rf dist/*
+	pipenv run python setup.py check
+	pipenv run python setup.py build
+	pipenv run python setup.py sdist
 
-upload-dist:
+upload-dist: dist/git-release-tag-$(CURRENT_VERSION).tag.gz
 	pipenv run twine upload dist/*
 
 
