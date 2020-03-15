@@ -1,4 +1,4 @@
-`# git release tag
+# git release tag
 semantic versioning support for components in git repositories.
 
 With the advent of continuous integration and continuous delivery, every commit to the source code repository delivers 
@@ -68,11 +68,11 @@ git-release-tag initialize --initial-release 1.0.0 ui backend .
 When you want to release a new version of the component, type:
 ```bash
 git-release-tag bump --recursive --level patch . 
-INFO: commit changes to .release in ./ui
-INFO: release 1.0.1 of ./ui tagged by ui-1.0.1
-INFO: ./backend has no changes since 1.0.0.
-INFO: commit changes to .release in .
-INFO: release 1.0.1 of . tagged by api-1.0.1
+>> INFO: commit changes to .release in ./ui
+>> INFO: release 1.0.1 of ./ui tagged by ui-1.0.1
+>> INFO: ./backend has no changes since 1.0.0.
+>> INFO: commit changes to .release in .
+>> INFO: release 1.0.1 of . tagged by api-1.0.1
 ```
 As you can see, the ui now has version 1.0.1, the backend version is unchanged and the application has bumped to 1.0.1
  too, because of the changes to the ui.
@@ -83,6 +83,7 @@ commits. To validate the integrity of your release configuration, type:
 
 ```bash
 git-release-tag validate --recursive .
+>> INFO: ok
 ```
 It reports an error if the configuration:
 - references tags which are not in the repository.
