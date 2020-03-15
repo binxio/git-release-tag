@@ -2,6 +2,7 @@ import os, re, logging
 from typing import List, Any
 import subprocess
 import fnmatch
+from typing import List, Optional
 from git_release_tag.logger import log
 from git_release_tag import git
 
@@ -25,8 +26,12 @@ class ReleaseInfo(object):
             log.error(f"directory {self.directory} does not exist")
             exit(1)
 
-        if os.path.exists(self.path):
+        if self.has_release_configuration:
             self.read()
+
+    @property
+    def has_release_configuration(self) -> bool:
+        return os.path.exists(self.path)
 
     @property
     def semver(self):
@@ -193,8 +198,6 @@ class ReleaseInfo(object):
                 log.info(f"{self.directory} has no changes since {self.semver}.")
                 return
 
-        self.next_version(level)
-        self.write()
         if not message:
             message = f"bumped {self.git_prefix} to release {self.semver}"
         self.commit_and_tag(f"bumped {self.git_prefix} to release {self.semver}")
@@ -205,10 +208,17 @@ class ReleaseInfo(object):
     def commit_and_tag(self, message: str):
         self.exec_pre_tag_command()
 
-        self.git_update(["git", "add", "."])
-        self.git_update(["git", "commit", "-m", message])
+        changes = list(map(lambda s: s[3:], self.change_list))
+        if changes:
+            log.info(f"commit changes to {', '.join(changes)} in {self.directory}")
+            self.git_update(["git", "add", "."])
+            self.git_update(["git", "commit", "-m", message])
+        else:
+            log.info(f"no changes to commit in {self.directory}")
+
+
         self.git_update(["git", "tag", self.tag])
-        log.info(f"{self.directory} tagged with release {self.semver}.")
+        log.info(f"release {self.semver} of {self.directory} tagged by {self.tag}")
 
     @staticmethod
     def initialize(
@@ -233,13 +243,12 @@ class ReleaseInfo(object):
         info.base_tag = base_tag
         info.pre_tag_command = pre_tag_command
 
-        if info.tag in info.all_tags:
+        if info.is_inside_work_tree and info.tag in info.all_tags:
             log.error(f'tag {info.tag} already exist in git repository for {info.path}')
             exit(1)
 
         info.write()
         if info.is_inside_work_tree:
-            log.info(f"commit changes in {info.path} and tag as {info.tag}")
             info.commit_and_tag(
                 f"initialized {info.git_prefix} to release {info.semver}"
             )
@@ -276,34 +285,54 @@ class ReleaseInfo(object):
             return out[0]
 
     @staticmethod
-    def find_all_subdirectories(directory, dry_run: bool) -> List["ReleaseInfo"]:
-        result = []
-        for root, dir, files in os.walk(directory, topdown=False):
-            for item in fnmatch.filter(files, ".release"):
-                info = ReleaseInfo(path=os.path.join(root), dry_run=dry_run)
-                info.read()
-                result.append(info)
-        return result
-
-    @staticmethod
-    def all_tags_unique(components: List["ReleaseInfo"]) -> bool:
+    def validate(release_infos: List["ReleaseInfo"]) -> bool:
         result = True
         base_tags = {}
-        for component in components:
-            base_tag = component.base_tag
+        for release_info in release_infos:
+
+            base_tag = release_info.base_tag
             existing = base_tags.get(base_tag)
-            if component.base_tag in base_tags:
+            if release_info.base_tag in base_tags:
                 log.error(
-                    f"{component.path} has the same base tag as {existing.path}: {base_tag}"
+                    f"{release_info.path} has the same base tag as {existing.path}: {base_tag}"
                 )
                 result = False
             else:
-                base_tags[base_tag] = component
+                base_tags[base_tag] = release_info
 
-            if component.tag not in component.all_tags:
-                log.error(
-                    f"tag {component.tag} in {component.path} does not exist in repository"
-                )
+            if not release_info.is_inside_work_tree:
+                log.error(f"{release_info.directory} is not inside a git workspace")
                 result = False
+            else:
+                if release_info.tag not in release_info.all_tags:
+                    log.error(
+                        f"tag {release_info.tag} in {release_info.path} does not exist in repository"
+                    )
+                    result = False
 
         return result
+
+    #staticmethod
+    def find_all(directories: Optional[List[str]], recursive:bool, dry_run:bool) -> List["ReleaseInfo"]:
+        """
+        filters all directories with a .release configuration and returns a list of ReleaseInfo.
+        if recursive is specified the directories are traversed to find all subdirectories with a .release.
+        If no directories are specified, the current working directory is used.
+        The resulting list is sorted depth first, to ensure that parent directories are processed last.
+        """
+        result = []
+        if not directories:
+            directories = ["."]
+
+        if recursive:
+            for dir in directories:
+                for root, _, files in os.walk(dir, topdown=False):
+                    for item in fnmatch.filter(files, ".release"):
+                        info = ReleaseInfo(path=os.path.join(root), dry_run=dry_run)
+                        info.read()
+                        result.append(info)
+        else:
+            for dir in directories:
+                result.append(ReleaseInfo(dir, dry_run=dry_run))
+
+        return sorted(result, key=lambda p: len(os.path.abspath(p.directory).split("/")), reverse=True)

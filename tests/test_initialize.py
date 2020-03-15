@@ -1,7 +1,7 @@
 import pytest
 import os
 import uuid
-from git_release_tag.component import ReleaseInfo
+from git_release_tag.release_info import ReleaseInfo
 
 
 def test_initialize_outside_a_workspace():

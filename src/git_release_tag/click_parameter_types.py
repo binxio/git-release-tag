@@ -1,6 +1,7 @@
 import click
 import re
-from git_release_tag.component import ReleaseInfo
+from collections import OrderedDict
+from git_release_tag.release_info import ReleaseInfo
 
 
 class SemVer(click.ParamType):
@@ -32,7 +33,7 @@ class PreTagCommand(click.ParamType):
         if value is None:
             return value
 
-        allowed = set("RELEASE", "TAG", "BASE_TAG")
+        allowed = set(["RELEASE", "TAG", "BASE_TAG"])
         refs = set(re.findall(r"@@([a-zA-Z_]+)@@", value))
         unsupported = refs.difference(allowed)
         if unsupported:
@@ -43,21 +44,33 @@ class PreTagCommand(click.ParamType):
         return value
 
 
-class ReleaseLevel(click.ParamType):
+class ReleaseLevel(click.Choice):
     """
     release level patch, minor or major
     """
 
     name = "release-level"
 
+    def __init__(self):
+        super(ReleaseLevel,self).__init__(["patch", "minor", "major"])
+
     def convert(self, value, param, ctx) -> str:
+        result = super(ReleaseLevel,self).convert(value,param, ctx)
         levels = {
             "major": ReleaseInfo.MAJOR,
             "minor": ReleaseInfo.MINOR,
             "patch": ReleaseInfo.PATCH,
         }
 
-        if levels.get(value):
-            return levels.get(value)
+        return levels.get(result)
 
-        self.fail(f"invalid release level {value}, either major, minor or patch")
+
+class OrderedGroup(click.Group):
+    def __init__(self, name=None, commands=None, **attrs):
+        super(OrderedGroup, self).__init__(name, commands, **attrs)
+        #: the registered subcommands by their exported names.
+        self.commands = commands or OrderedDict()
+
+    def list_commands(self, ctx):
+        return self.commands
+

@@ -1,25 +1,29 @@
 import logging
 import os
 import click
-from typing import List
+from collections import OrderedDict
+from typing import List,Optional
 
 
-from git_release_tag.click_parameter_types import SemVer, PreTagCommand, ReleaseLevel
-from git_release_tag.component import ReleaseInfo
+from git_release_tag.click_parameter_types import SemVer, PreTagCommand, ReleaseLevel, OrderedGroup
+from git_release_tag.release_info import ReleaseInfo
 from git_release_tag.logger import log
 
 
-@click.group(help="release tag support for git repositories")
+@click.group(cls=OrderedGroup)
 @click.option("--dry-run", is_flag=True, default=False, help="do not change anything")
 @click.option("--verbose", is_flag=True, default=False, help="output")
 @click.pass_context
 def main(ctx, dry_run, verbose):
+    """
+    semantic version tag support for components in git repositories.
+    """
     if verbose:
         log.setLevel(logging.DEBUG)
     ctx.obj = ctx.params
 
 
-@main.command(help="with a release tag")
+@main.command()
 @click.option(
     "--initial-release",
     type=SemVer(),
@@ -32,7 +36,7 @@ def main(ctx, dry_run, verbose):
 )
 @click.option(
     "--pre-tag-command",
-    type=str,
+    type=PreTagCommand(),
     default="",
     required=False,
     help="to run before version is set and tag is made",
@@ -42,7 +46,24 @@ def main(ctx, dry_run, verbose):
 )
 @click.pass_context
 def initialize(ctx, initial_release, tag_prefix, pre_tag_command, directory):
+    """
+    directory with release configuration.
 
+    Creates a release configuration using the specified `initial-release`, `tag-prefix`, and
+    `pre-tag-command`. the file is called .release and has the following syntax:
+
+    \b
+        release=<initial-release>
+        tag=<tag-prefix><initial-release>
+        pre-tag-command=<pre-tag-command>
+
+    The `pre-tag-command` is executed and any outstanding changes are committed and tagged with
+    the specified `tag`.
+
+    The directories must be in a git workspace.
+    """
+
+    print(f'>{pre_tag_command}<')
     directories = sorted(directory, key=lambda p: len(os.path.abspath(p).split("/")), reverse=True)
 
     prefixes = list(map(lambda d: os.path.basename(os.path.abspath(d)), directories))
@@ -73,74 +94,84 @@ def initialize(ctx, initial_release, tag_prefix, pre_tag_command, directory):
 
     exit(not result)
 
-@main.command("bump", help="the release")
+
+@main.command("show")
 @click.option("--recursive", "-r", is_flag=True, default=False, help="all directories")
-@click.option("--release-level", type=ReleaseLevel(), required=True, help="to bump, either major, minor or patch")
+@click.option("--with-tags", is_flag=True, default=False, help="of the latest release")
+@click.argument(
+    "directory", type=click.Path(file_okay=False, exists=True), required=False, nargs=-1
+)
+@click.pass_context
+def show(ctx, recursive, with_tags, directory):
+    """
+    current release version.
+
+    If a single directory is specified, it will print out the current release version in the
+    form of `<release>[<-sha-commit>[-dirty]]`. If multiple directories are specified, it will print out the
+    directory name followed by the release version.
+    """
+
+    release_infos = ReleaseInfo.find_all(directory, recursive, ctx.obj["dry_run"])
+    for release_info in release_infos:
+        if not release_info.has_release_configuration:
+            log.error(f"directory {release_info.directory} has no release configuration")
+            exit(1)
+
+        if recursive:
+            if with_tags:
+                print(f'{release_info.directory}\t{release_info.current_version}\t{release_info.tag}')
+            else:
+                print(f'{release_info.directory}\t{release_info.current_version}')
+        else:
+            print(release_info.current_version)
+
+@main.command("bump")
+@click.option("--recursive", "-r", is_flag=True, default=False, help="all directories")
+@click.option("--level", type=ReleaseLevel(), required=True, help="to bump")
 @click.option("--force", is_flag=True, default=False, help="even if there are no changes")
 @click.argument(
     "directory", type=click.Path(file_okay=False, exists=True), required=False, nargs=-1
 )
 @click.pass_context
-def bump(ctx, recursive:bool, force:bool, release_level:int, directory):
-    components = get_all_release_info(directory, recursive, ctx.obj["dry_run"])
+def bump(ctx, recursive:bool, force:bool, level:int, directory):
+    """
+    semantic version and tags the commit.
 
-    if not ReleaseInfo.all_tags_unique(components):
+    It either bumps the major, minor or the level of the semantic version and tag the commit.
+    `--force` will update the semantic version, even if there are no changes since the previous release.
+
+    The `pre-tag-command` is executed and any outstanding changes are committed and tagged with
+    the specified `tag`.
+    """
+    release_infos = ReleaseInfo.find_all(directory, recursive, ctx.obj["dry_run"])
+
+    if not ReleaseInfo.validate(release_infos):
         exit(1)
 
-    for component in components:
-        component.tag_next_release(release_level, force=force)
-
-
-@main.command("show", help="current release")
-@click.option("--recursive", "-r", is_flag=True, default=False, help="all directories")
-@click.option("--with-tags", is_flag=True, default=False, help="of the latest release")
-@click.argument(
-    "directory", type=click.Path(file_okay=False, exists=True), default=".", required=False, nargs=1
-)
-@click.pass_context
-def show(ctx, recursive, with_tags, directory):
-
-    components = get_all_release_info(directory, recursive, ctx.obj["dry_run"])
-    for component in components:
-        if recursive:
-            if with_tags:
-                print(f'{component.directory}\t{component.current_version}\t{component.tag}')
-            else:
-                print(f'{component.directory}\t{component.current_version}')
-        else:
-            print(component.current_version)
+    for release_info in release_infos:
+        release_info.tag_next_release(level, force=force)
 
 
 
-@main.command("validate", help="integrity of tags")
-@click.option("--recursive/--no-recursive", "-r", is_flag=True, default=True, help="all directories")
+@main.command("validate")
+@click.option("--recursive/--no-recursive", "-r", is_flag=True, default=False, help="all directories")
 @click.argument(
     "directory", type=click.Path(file_okay=False, exists=True), required=False, nargs=-1
 )
 @click.pass_context
-def validate(ctx, directory, recursive:bool):
-    if not directory:
-        directory = ["."]
-    components = get_all_release_info(directory, recursive, True)
-    if ReleaseInfo.all_tags_unique(components):
+def validate(ctx, recursive:bool, directory):
+    """
+    integrity of release configuration.
+
+    checks whether the specified directories use a unique tag prefix and
+    whether the specified tag exists in the git repository.
+    """
+    release_infos = ReleaseInfo.find_all(directory, recursive, True)
+    if ReleaseInfo.validate(release_infos):
         logging.info("ok")
-
-
-def get_all_release_info(directories: List[str], recursive:bool, dry_run:bool) -> List[ReleaseInfo]:
-    result = []
-    if not directories:
-        directories = ["."]
-
-    if recursive:
-        for dir in directories:
-            result.extend(
-                ReleaseInfo.find_all_subdirectories(dir,dry_run=dry_run)
-            )
     else:
-        for dir in directories:
-            result.append(ReleaseInfo(dir, dry_run=dry_run))
+        exit(1)
 
-    return sorted(result, key=lambda p: len(os.path.abspath(p.directory).split("/")), reverse=True)
 
 
 
