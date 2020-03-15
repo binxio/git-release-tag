@@ -198,6 +198,8 @@ class ReleaseInfo(object):
                 log.info(f"{self.directory} has no changes since {self.semver}.")
                 return
 
+        self.next_version(level)
+        self.write()
         if not message:
             message = f"bumped {self.git_prefix} to release {self.semver}"
         self.commit_and_tag(f"bumped {self.git_prefix} to release {self.semver}")
