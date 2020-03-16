@@ -199,10 +199,14 @@ class ReleaseInfo(object):
                 return
 
         self.next_version(level)
+        if self.tag in self.all_tags:
+            log.error(f"tag {self.tag} already exists")
+            exit(1)
+
         self.write()
         if not message:
             message = f"bumped {self.git_prefix} to release {self.semver}"
-        self.commit_and_tag(f"bumped {self.git_prefix} to release {self.semver}")
+        self.commit_and_tag(message)
 
     def git_init(self):
         self.git_update(["git", "init"])
