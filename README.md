@@ -74,8 +74,23 @@ git-release-tag bump --recursive --level patch .
 >> INFO: commit changes to .release in .
 >> INFO: release 1.0.1 of . tagged by api-1.0.1
 ```
-As you can see, the ui now has version 1.0.1, the backend version is unchanged and the application has bumped to 1.0.1
- too, because of the changes to the ui.
+As you can see, the ui now has version 1.0.1, the backend version is unchanged and the application  
+has bumped to 1.0.1  too, because of the changes to the ui.
+
+## dependencies between multiple components in a single repository
+When you need to bump the version of a component when there are changes in other components in the
+same repository, specify the dependency in the field `tag_on_changes_in` in the .release file.
+
+So let's say that the UI always has to change when the api changes, change the .release as follows:
+
+```
+release=1.0.1
+tag=ui-1.0.1
+tag_on_changes_in=../api
+```
+Now, when there are changes in the ../api directory with respect to the tag in the ui directory,
+a new release will be created.
+
 
 ## validating your configuration
 As tags are not part of the commit, it sometimes happens that somebody forgets to push the tags along with the

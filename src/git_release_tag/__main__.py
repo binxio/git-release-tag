@@ -1,9 +1,8 @@
 import logging
 import os
 import click
-from collections import OrderedDict
-from typing import List,Optional
-
+from pathlib import Path
+from os.path import relpath
 
 from git_release_tag.click_parameter_types import SemVer, PreTagCommand, ReleaseLevel, OrderedGroup
 from git_release_tag.release_info import ReleaseInfo
@@ -37,15 +36,23 @@ def main(ctx, dry_run, verbose):
 @click.option(
     "--pre-tag-command",
     type=PreTagCommand(),
-    default="",
+    default=None,
     required=False,
     help="to run before version is set and tag is made",
+)
+@click.option(
+    "--tag-on-changes-in",
+    type=click.Path(file_okay=False, exists=True),
+    default=["."],
+    required=False,
+    multiple=True,
+    help="bumps the release when there are changes in dependent directories",
 )
 @click.argument(
     "directory", type=click.Path(file_okay=False, exists=True), required=True, nargs=-1
 )
 @click.pass_context
-def initialize(ctx, initial_release, tag_prefix, pre_tag_command, directory):
+def initialize(ctx, initial_release, tag_prefix, pre_tag_command, tag_on_changes_in, directory):
     """
     directory with release configuration.
 
@@ -55,17 +62,16 @@ def initialize(ctx, initial_release, tag_prefix, pre_tag_command, directory):
     \b
         release=<initial-release>
         tag=<tag-prefix><initial-release>
-        pre-tag-command=<pre-tag-command>
+        pre_tag_command=<pre-tag-command>
+        tag_on_changes_in=<tag-on-changes-in-directory>
 
     The `pre-tag-command` is executed and any outstanding changes are committed and tagged with
     the specified `tag`.
 
     The directories must be in a git workspace.
     """
-
-    print(f'>{pre_tag_command}<')
     directories = sorted(directory, key=lambda p: len(os.path.abspath(p).split("/")), reverse=True)
-
+    tag_on_changes_in = [Path(s).absolute().as_posix() for s in tag_on_changes_in]
     prefixes = list(map(lambda d: os.path.basename(os.path.abspath(d)), directories))
     if tag_prefix is not None and len(directories) > 1:
         log.error('you cannot specify the same tag-prefix for different directories')
@@ -81,14 +87,15 @@ def initialize(ctx, initial_release, tag_prefix, pre_tag_command, directory):
             log.error('%s is not inside a git workspace, please run git init', path)
             exit(1)
 
-
     result = True
     for path in directories:
+        relative_dirs = [relpath(s, Path(path).absolute()) for s in tag_on_changes_in]
         result = ReleaseInfo.initialize(
             path,
             semver=initial_release,
             base_tag=tag_prefix if tag_prefix is not None else f'{os.path.basename(os.path.abspath(path))}-',
             pre_tag_command=pre_tag_command,
+            tag_on_changes_in=relative_dirs,
             dry_run=ctx.obj["dry_run"],
         ) and result
 

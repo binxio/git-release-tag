@@ -30,7 +30,7 @@ class PreTagCommand(click.ParamType):
     name = "pre_tag_command"
 
     def convert(self, value, param, ctx) -> str:
-        if value is None:
+        if not value is None:
             return value
 
         allowed = set(["RELEASE", "TAG", "BASE_TAG"])
