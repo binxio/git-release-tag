@@ -171,12 +171,15 @@ def validate(ctx, recursive:bool, directory):
     checks whether the specified directories use a unique tag prefix and
     whether the specified tag exists in the git repository.
     """
-    release_infos = ReleaseInfo.find_all(directory, recursive, True)
-    if ReleaseInfo.validate(release_infos):
-        logging.info("ok")
-    else:
+    try:
+        release_infos = ReleaseInfo.find_all(directory, recursive, True)
+        if ReleaseInfo.validate(release_infos):
+            logging.info("ok")
+        else:
+            exit(1)
+    except ValueError as error:
+        logging.error(str(error))
         exit(1)
-
 
 
 
