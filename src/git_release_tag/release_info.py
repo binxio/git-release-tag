@@ -17,7 +17,7 @@ class ReleaseInfo(object):
         super(ReleaseInfo, self).__init__()
         self.dry_run = dry_run
         self.directory = path
-        self.path = os.path.join(self.directory, ".release")
+        self.path = os.path.join(os.path.abspath(self.directory), ".release")
         self.tag_on_changes_in = ["."]
 
         self.base_tag = None
@@ -41,11 +41,9 @@ class ReleaseInfo(object):
     @tag_on_changes_in.setter
     def tag_on_changes_in(self, directories: [str]):
         self._compare_directories = directories if directories else ["."]
-        if "." not in self._compare_directories:
-            self._compare_directories.append(".")
-
         root = self.git_top_level(Path(self.directory).absolute())
 
+        relative_directories = []
         for directory in self._compare_directories:
             absolute_path = Path(self.directory).absolute().joinpath(directory)
             if not absolute_path.is_dir():
@@ -53,7 +51,15 @@ class ReleaseInfo(object):
 
             toplevel = self.git_top_level(absolute_path)
             if toplevel != root:
-                raise ValueError(f"dependency {directory} is not in the same git repository as {self.directory}")
+                raise ValueError(
+                    f"dependency {directory} is not in the same git repository as {self.directory}"
+                )
+
+            relative_directories.append(os.path.relpath(absolute_path, self.directory))
+        self._compare_directories = relative_directories
+
+        if "." not in self._compare_directories:
+            self._compare_directories.append(".")
 
     @property
     def has_release_configuration(self) -> bool:
@@ -141,9 +147,14 @@ class ReleaseInfo(object):
                 f"tag {self.tag} in {self.path} does not match specified release {match.group('release')}"
             )
 
-
     def __repr__(self):
         return self.path
+
+    def __eq__(self, other):
+        return self.path == other.path
+
+    def __hash__(self):
+        return hash(self.path)
 
     def write(self):
         log.debug(f"writing {self.path}")
@@ -156,7 +167,9 @@ class ReleaseInfo(object):
             if self.pre_tag_command:
                 f.write("pre_tag_command=%s\n" % self.pre_tag_command)
             if self.tag_on_changes_in and self.tag_on_changes_in != ["."]:
-                f.write("tag_on_changes_in={}\n".format(' '.join(self.tag_on_changes_in)))
+                f.write(
+                    "tag_on_changes_in={}\n".format(" ".join(self.tag_on_changes_in))
+                )
 
     def next_version(self, level):
         assert self.semver
@@ -189,8 +202,11 @@ class ReleaseInfo(object):
         return out[0]
 
     def git_top_level(self, directory) -> str:
-        out, _ = git.exec(["git", "rev-parse", "--show-toplevel"],
-            directory, dry_run=False, fail_on_error=False
+        out, _ = git.exec(
+            ["git", "rev-parse", "--show-toplevel"],
+            directory,
+            dry_run=False,
+            fail_on_error=False,
         )
         return out[0].strip()
 
@@ -210,18 +226,23 @@ class ReleaseInfo(object):
     def short_revision(self) -> str:
         return self.git_query(["git", "log", "-n", "1", "--format=%h", "."]).rstrip()
 
-
     @property
     def changes_since_tag(self) -> str:
         return self.git_query(
-            add_arguments(["git", "diff", "--shortstat", "-r", self.tag, "--"], self.tag_on_changes_in)
+            add_arguments(
+                ["git", "diff", "--shortstat", "-r", self.tag, "--"],
+                self.tag_on_changes_in,
+            )
         ).rstrip()
 
     @property
     def change_list(self) -> List[str]:
         return list(
             filter(
-                lambda c: c, self.git_query(add_arguments(["git", "status", "-s"], self.tag_on_changes_in)).split("\n")
+                lambda c: c,
+                self.git_query(
+                    add_arguments(["git", "status", "-s"], self.tag_on_changes_in)
+                ).split("\n"),
             )
         )
 
@@ -236,7 +257,10 @@ class ReleaseInfo(object):
 
     def tag_next_release(self, level, message: str = None, force: bool = False):
         if not force:
-            if not self.changes_since_tag:
+            changes = self.changes_since_tag
+            if changes:
+                log.info(f"found {changes} since {self.semver}.")
+            else:
                 log.info(f"{self.directory} has no changes since {self.semver}.")
                 return
 
@@ -273,7 +297,7 @@ class ReleaseInfo(object):
         semver: str = "0.0.0",
         base_tag: str = "",
         pre_tag_command: str = "",
-        tag_on_changes_in = ["."],
+        tag_on_changes_in=["."],
         dry_run: bool = False,
     ) -> bool:
 
@@ -293,7 +317,7 @@ class ReleaseInfo(object):
         info.tag_on_changes_in = tag_on_changes_in
 
         if info.is_inside_work_tree and info.tag in info.all_tags:
-            log.error(f'tag {info.tag} already exist in git repository for {info.path}')
+            log.error(f"tag {info.tag} already exist in git repository for {info.path}")
             exit(1)
 
         info.write()
@@ -361,8 +385,10 @@ class ReleaseInfo(object):
 
         return result
 
-    #staticmethod
-    def find_all(directories: Optional[List[str]], recursive:bool, dry_run:bool) -> List["ReleaseInfo"]:
+    # staticmethod
+    def find_all(
+        directories: Optional[List[str]], recursive: bool, dry_run: bool
+    ) -> List["ReleaseInfo"]:
         """
         filters all directories with a .release configuration and returns a list of ReleaseInfo.
         if recursive is specified the directories are traversed to find all subdirectories with a .release.
@@ -384,7 +410,61 @@ class ReleaseInfo(object):
             for dir in directories:
                 result.append(ReleaseInfo(dir, dry_run=dry_run))
 
-        return sorted(result, key=lambda p: len(os.path.abspath(p.directory).split("/")), reverse=True)
+        return order_release_infos(result)
+
+
+def order_release_infos(release_infos: [ReleaseInfo]) -> [ReleaseInfo]:
+    """
+    sort the release infos in the order in which they can be processed without causing an
+    endless tagging loop due to the tag_on_changes_in directory.
+    """
+    infos = {os.path.abspath(r.directory): r for r in release_infos}
+    sorted_on_depth = sorted(release_infos, key=lambda x: -len(x.directory.split("/")))
+
+    def find_release_info_for_dependency(path: str) -> Optional[str]:
+        for info in sorted_on_depth:
+            if path.startswith(info.directory):
+                return info.directory
+        return None
+
+    graph = {
+        k: list(
+            filter(
+                lambda d: d and d != k,
+                map(
+                    lambda p: find_release_info_for_dependency(
+                        os.path.abspath(os.path.join(k, p))
+                    ),
+                    v.tag_on_changes_in,
+                ),
+            )
+        )
+        for k, v in infos.items()
+    }
+
+    def visit(node, stack, visited):
+        if node not in graph:
+            log.debug("%s is not a release info directory")
+            return
+
+        visited.add(node)
+        for dep in graph[node]:
+            if dep not in visited:
+                visit(dep, stack, visited)
+            else:
+                raise ValueError(f"cycle detected on {dep} from {node}")
+        visited.remove(node)
+        if node not in stack:
+            stack.append(node)
+
+    stack = []
+    visited = set()
+    for node in graph:
+        visit(node, stack, visited)
+
+    assert len(stack) == len(infos), f"{len(stack)} {len(infos)}"
+
+    return [infos[p] for p in stack]
 
 
 def add_arguments(command: [str], arguments: [str]) -> [str]:
@@ -392,6 +472,7 @@ def add_arguments(command: [str], arguments: [str]) -> [str]:
     appends the arguments to the command
     """
     from copy import copy
+
     result = copy(command)
     result.extend(arguments)
     return result
