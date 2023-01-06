@@ -4,7 +4,12 @@ import click
 from pathlib import Path
 from os.path import relpath
 
-from git_release_tag.click_parameter_types import SemVer, PreTagCommand, ReleaseLevel, OrderedGroup
+from git_release_tag.click_parameter_types import (
+    SemVer,
+    PreTagCommand,
+    ReleaseLevel,
+    OrderedGroup,
+)
 from git_release_tag.release_info import ReleaseInfo
 from git_release_tag.logger import log
 
@@ -30,9 +35,7 @@ def main(ctx, dry_run, verbose):
     required=False,
     help="initial version",
 )
-@click.option(
-    "--tag-prefix", type=str, required=False, help="for the semver tag"
-)
+@click.option("--tag-prefix", type=str, required=False, help="for the semver tag")
 @click.option(
     "--pre-tag-command",
     type=PreTagCommand(),
@@ -52,7 +55,9 @@ def main(ctx, dry_run, verbose):
     "directory", type=click.Path(file_okay=False, exists=True), required=True, nargs=-1
 )
 @click.pass_context
-def initialize(ctx, initial_release, tag_prefix, pre_tag_command, tag_on_changes_in, directory):
+def initialize(
+    ctx, initial_release, tag_prefix, pre_tag_command, tag_on_changes_in, directory
+):
     """
     directory with release configuration.
 
@@ -70,34 +75,43 @@ def initialize(ctx, initial_release, tag_prefix, pre_tag_command, tag_on_changes
 
     The directories must be in a git workspace.
     """
-    directories = sorted(directory, key=lambda p: len(os.path.abspath(p).split("/")), reverse=True)
+    directories = sorted(
+        directory, key=lambda p: len(os.path.abspath(p).split("/")), reverse=True
+    )
     tag_on_changes_in = [Path(s).absolute().as_posix() for s in tag_on_changes_in]
     prefixes = list(map(lambda d: os.path.basename(os.path.abspath(d)), directories))
     if tag_prefix is not None and len(directories) > 1:
-        log.error('you cannot specify the same tag-prefix for different directories')
+        log.error("you cannot specify the same tag-prefix for different directories")
         exit(1)
 
     if len(set(prefixes)) != len(prefixes):
-        log.error('base directory names must be unique in order to avoid non unique tag-prefixes')
+        log.error(
+            "base directory names must be unique in order to avoid non unique tag-prefixes"
+        )
         exit(1)
 
     for path in directories:
         component = ReleaseInfo(path)
         if not component.is_inside_work_tree:
-            log.error('%s is not inside a git workspace, please run git init', path)
+            log.error("%s is not inside a git workspace, please run git init", path)
             exit(1)
 
     result = True
     for path in directories:
         relative_dirs = [relpath(s, Path(path).absolute()) for s in tag_on_changes_in]
-        result = ReleaseInfo.initialize(
-            path,
-            semver=initial_release,
-            base_tag=tag_prefix if tag_prefix is not None else f'{os.path.basename(os.path.abspath(path))}-',
-            pre_tag_command=pre_tag_command,
-            tag_on_changes_in=relative_dirs,
-            dry_run=ctx.obj["dry_run"],
-        ) and result
+        result = (
+            ReleaseInfo.initialize(
+                path,
+                semver=initial_release,
+                base_tag=tag_prefix
+                if tag_prefix is not None
+                else f"{os.path.basename(os.path.abspath(path))}-",
+                pre_tag_command=pre_tag_command,
+                tag_on_changes_in=relative_dirs,
+                dry_run=ctx.obj["dry_run"],
+            )
+            and result
+        )
 
     exit(not result)
 
@@ -120,26 +134,33 @@ def show(ctx, recursive, with_tags, directory):
     release_infos = ReleaseInfo.find_all(directory, recursive, ctx.obj["dry_run"])
     for release_info in release_infos:
         if not release_info.has_release_configuration:
-            log.error(f"directory {release_info.directory} has no release configuration")
+            log.error(
+                f"directory {release_info.directory} has no release configuration"
+            )
             exit(1)
 
         if recursive:
             if with_tags:
-                print(f'{release_info.directory}\t{release_info.current_version}\t{release_info.tag}')
+                print(
+                    f"{release_info.directory}\t{release_info.current_version}\t{release_info.tag}"
+                )
             else:
-                print(f'{release_info.directory}\t{release_info.current_version}')
+                print(f"{release_info.directory}\t{release_info.current_version}")
         else:
             print(release_info.current_version)
+
 
 @main.command("bump")
 @click.option("--recursive", "-r", is_flag=True, default=False, help="all directories")
 @click.option("--level", type=ReleaseLevel(), required=True, help="to bump")
-@click.option("--force", is_flag=True, default=False, help="even if there are no changes")
+@click.option(
+    "--force", is_flag=True, default=False, help="even if there are no changes"
+)
 @click.argument(
     "directory", type=click.Path(file_okay=False, exists=True), required=False, nargs=-1
 )
 @click.pass_context
-def bump(ctx, recursive:bool, force:bool, level:int, directory):
+def bump(ctx, recursive: bool, force: bool, level: int, directory):
     """
     semantic version and tags the commit.
 
@@ -159,12 +180,18 @@ def bump(ctx, recursive:bool, force:bool, level:int, directory):
 
 
 @main.command("validate")
-@click.option("--recursive/--no-recursive", "-r", is_flag=True, default=False, help="all directories")
+@click.option(
+    "--recursive/--no-recursive",
+    "-r",
+    is_flag=True,
+    default=False,
+    help="all directories",
+)
 @click.argument(
     "directory", type=click.Path(file_okay=False, exists=True), required=False, nargs=-1
 )
 @click.pass_context
-def validate(ctx, recursive:bool, directory):
+def validate(ctx, recursive: bool, directory):
     """
     integrity of release configuration.
 
@@ -180,7 +207,6 @@ def validate(ctx, recursive:bool, directory):
     except ValueError as error:
         logging.error(str(error))
         exit(1)
-
 
 
 if __name__ == "__main__":

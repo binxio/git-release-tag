@@ -52,10 +52,10 @@ class ReleaseLevel(click.Choice):
     name = "release-level"
 
     def __init__(self):
-        super(ReleaseLevel,self).__init__(["patch", "minor", "major"])
+        super(ReleaseLevel, self).__init__(["patch", "minor", "major"])
 
     def convert(self, value, param, ctx) -> str:
-        result = super(ReleaseLevel,self).convert(value,param, ctx)
+        result = super(ReleaseLevel, self).convert(value, param, ctx)
         levels = {
             "major": ReleaseInfo.MAJOR,
             "minor": ReleaseInfo.MINOR,
@@ -73,4 +73,3 @@ class OrderedGroup(click.Group):
 
     def list_commands(self, ctx):
         return self.commands
-
