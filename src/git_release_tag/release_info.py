@@ -1,11 +1,12 @@
-import os, re, logging
-from typing import List, Any
-import subprocess
 import fnmatch
-from typing import List, Optional
-from git_release_tag.logger import log
-from git_release_tag import git
+import os
+import re
+import subprocess
 from pathlib import Path
+from typing import List, Optional
+
+from git_release_tag import git
+from git_release_tag.logger import log
 
 
 class ReleaseInfo(object):
@@ -47,7 +48,9 @@ class ReleaseInfo(object):
         for directory in self._compare_directories:
             absolute_path = Path(self.directory).absolute().joinpath(directory)
             if not absolute_path.is_dir():
-                raise ValueError(f"{directory} or {absolute_path} is not a directory")
+                raise ValueError(
+                    f"dependency {directory} of {self.directory} is not a directory"
+                )
 
             toplevel = self.git_top_level(absolute_path)
             if toplevel != root:
@@ -201,7 +204,8 @@ class ReleaseInfo(object):
         )
         return out[0]
 
-    def git_top_level(self, directory) -> str:
+    @staticmethod
+    def git_top_level(directory) -> str:
         out, _ = git.exec(
             ["git", "rev-parse", "--show-toplevel"],
             directory,
@@ -424,52 +428,39 @@ def order_release_infos(release_infos: [ReleaseInfo]) -> [ReleaseInfo]:
     endless tagging loop due to the tag_on_changes_in directory.
     """
     infos = {os.path.abspath(r.directory): r for r in release_infos}
-    sorted_on_depth = sorted(release_infos, key=lambda x: -len(x.directory.split("/")))
 
-    def find_release_info_for_dependency(path: str) -> Optional[str]:
-        for info in sorted_on_depth:
-            if path.startswith(info.directory):
-                return info.directory
-        return None
+    graph = {}
+    for directory, info in infos.items():
+        graph[directory] = []
+        for dependent_directory in map(
+            lambda d: os.path.abspath(os.path.join(directory, d)),
+            info.tag_on_changes_in,
+        ):
+            if dependent_directory not in infos.keys():
+                graph[dependent_directory] = []
+            if dependent_directory != directory:
+                graph[directory].append(dependent_directory)
 
-    graph = {
-        k: list(
-            filter(
-                lambda d: d and d != k,
-                map(
-                    lambda p: find_release_info_for_dependency(
-                        os.path.abspath(os.path.join(k, p))
-                    ),
-                    v.tag_on_changes_in,
-                ),
-            )
-        )
-        for k, v in infos.items()
-    }
-
-    def visit(node, stack, visited):
-        if node not in graph:
-            log.debug("%s is not a release info directory")
-            return
-
-        visited.add(node)
-        for dep in graph[node]:
+    def visit(directory, stack, visited):
+        visited.add(directory)
+        for dep in graph[directory]:
             if dep not in visited:
                 visit(dep, stack, visited)
             else:
-                raise ValueError(f"cycle detected on {dep} from {node}")
-        visited.remove(node)
-        if node not in stack:
-            stack.append(node)
+                raise ValueError(f"cycle detected on {dep} from {directory}")
+        visited.remove(directory)
+        if directory not in stack:
+            stack.append(directory)
 
     stack = []
     visited = set()
-    for node in graph:
-        visit(node, stack, visited)
+    sorted_on_depth = sorted(graph.keys(), key=lambda x: -len(x.split("/")))
 
-    assert len(stack) == len(infos), f"{len(stack)} {len(infos)}"
+    for directory in sorted_on_depth:
+        if directory in infos:
+            visit(directory, stack, visited)
 
-    return [infos[p] for p in stack]
+    return [infos[p] for p in filter(lambda p: p in infos, stack)]
 
 
 def add_arguments(command: [str], arguments: [str]) -> [str]:
