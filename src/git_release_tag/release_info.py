@@ -224,7 +224,12 @@ class ReleaseInfo(object):
 
     @property
     def short_revision(self) -> str:
-        return self.git_query(["git", "log", "-n", "1", "--format=%h", "."]).rstrip()
+        return self.git_query(
+            add_arguments(
+                ["git", "log", "-n", "1", "--format=%h", "--"],
+                self.tag_on_changes_in,
+            )
+        ).rstrip()
 
     @property
     def changes_since_tag(self) -> str:
@@ -241,7 +246,7 @@ class ReleaseInfo(object):
             filter(
                 lambda c: c,
                 self.git_query(
-                    add_arguments(["git", "status", "-s"], self.tag_on_changes_in)
+                    add_arguments(["git", "status", "-s", "--"], self.tag_on_changes_in)
                 ).split("\n"),
             )
         )
