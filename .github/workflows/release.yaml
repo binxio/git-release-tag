@@ -16,6 +16,8 @@ jobs:
         run: git fetch --prune --unshallow
       - name: pipenv
         run: pip install pipenv && pipenv sync -d 
+      - name: build
+        run: make
       - name: distribute application
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
