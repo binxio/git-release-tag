@@ -1,0 +1,24 @@
+name: release
+on:
+  push:
+    tags:
+      - '*'
+jobs:
+  build:
+    name: snapshot
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.9
+      - name: checkout
+        run: git fetch --prune --unshallow
+      - name: pipenv
+        run: pip install pipenv && pipenv sync -d 
+      - name: distribute application
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{secrets.twine_password }}
+          packages_dir: dist/
