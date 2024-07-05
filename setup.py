@@ -13,7 +13,7 @@ with open(path.join(this_directory, "README.md"), encoding="utf-8") as f:
 
 setup(
     name="git-release-tag",
-    version="0.7.5",
+    version="0.7.6",
     url="https://github.com/binxio/git-release-tag",
     license="BSD",
     author="Mark van Holsteijn",
