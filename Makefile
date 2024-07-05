@@ -19,7 +19,7 @@ clean:
 	find . -name \*.pyc | xargs rm 
 
 test: 
-	[ -z "$(ls -1 tests/test*.py 2>/dev/null)" ] || PYTHONPATH=$(PWD)/src pipenv run pytest ./tests/test*.py
+	[ -z "$(shell ls -1 tests/test*.py 2>/dev/null)" ] || PYTHONPATH=$(PWD)/src pipenv run pytest ./tests/test*.py
 
 fmt:
 	black $(find src -name *.py) tests/*.py
