@@ -18,7 +18,11 @@ def test_initialize_outside_a_workspace():
             pre_tag_command="echo @@RELEASE@@ > release.txt",
             dry_run=False,
         )
-        info = ReleaseInfo(path=dir)
+        try:
+            info = ReleaseInfo(path=dir)
+        except SystemExit as error:
+            assert False, f"exit({error.code}) called"
+
         assert info.pre_tag_command == "echo @@RELEASE@@ > release.txt"
         assert info.base_tag == os.path.basename(dir) + "-"
         assert info.semver == f"0.{i}.0"

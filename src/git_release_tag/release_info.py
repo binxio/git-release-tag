@@ -126,17 +126,22 @@ class ReleaseInfo(object):
                 f"ERROR: incorrect format of release in {self.path}, expected <major.minor.patch>"
             )
             exit(1)
+        self.semver = result["release"]
 
-        match = re.fullmatch(
-            r"(?P<base_tag>.*)(?P<release>[0-9]+\.[0-9]+\.[0-9]+$)", result["tag"]
-        )
-        if not match:
+        match = re.search(r"(?P<release>[0-9]+\.[0-9]+\.[0-9]+$)", result["tag"])
+        if match:
+            self.base_tag = result["tag"][: match.start()]
+            if match.group("release") != self.semver:
+                log.warning(
+                    f"tag {self.tag} in {self.path} does not match specified release {match.group('release')}"
+                )
+
+        else:
             log.error(
-                f"ERROR: incorrect format old the tag in {self.path}, expected tag <base><major.minor.patch>"
+                f"ERROR: incorrect format old the tag in {self.path}, expected tag <base>{self.semver}"
             )
             exit(1)
 
-        self.semver = result["release"]
         try:
             self.tag_on_changes_in = result.get("tag_on_changes_in", ".").split()
         except ValueError as error:
@@ -144,11 +149,6 @@ class ReleaseInfo(object):
             exit(1)
 
         self.pre_tag_command = result.get("pre_tag_command")
-        self.base_tag = match.group("base_tag")
-        if match.group("release") != self.semver:
-            log.warning(
-                f"tag {self.tag} in {self.path} does not match specified release {match.group('release')}"
-            )
 
     def __repr__(self):
         return self.path
@@ -309,7 +309,6 @@ class ReleaseInfo(object):
         tag_on_changes_in=["."],
         dry_run: bool = False,
     ) -> bool:
-
         if not os.path.isdir(directory):
             log.error(f"{directory} is not a directory.")
             exit(1)
@@ -371,7 +370,6 @@ class ReleaseInfo(object):
         result = True
         base_tags = {}
         for release_info in release_infos:
-
             base_tag = release_info.base_tag
             existing = base_tags.get(base_tag)
             if release_info.base_tag in base_tags:
